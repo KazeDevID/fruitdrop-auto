@@ -1,10 +1,10 @@
 package com.example.model
 
 data class FruitDropConfig(
-    // Relative coordinates based on screen dimensions (0.0f - 1.0f)
-    val scanRelX: Float = 0.085f,      // ~61px on 720px wide screen
-    val scanRelY: Float = 0.281f,      // ~450px on 1600px high screen
-    val scanRadiusDp: Int = 24,
+    // Relative coordinates based on real screen dimensions (0.0f - 1.0f)
+    val scanRelX: Float = 0.086f,      // ~62px on 720px wide screen (exact preview circle center)
+    val scanRelY: Float = 0.281f,      // ~450px on 1600px high screen (exact preview circle center)
+    val scanRadiusDp: Int = 13,        // ~26px on 720p — fits strictly inside preview fruit without hitting timer badge
 
     // Drop tap positions
     val dropLeftRelX: Float = 0.095f,  // Far left column (~68px on 720p)
@@ -24,6 +24,7 @@ data class FruitDropConfig(
         FruitType.KIWI_HIJAU.id to DropTarget.LEFT,
         FruitType.PEACH.id to DropTarget.LEFT,
         FruitType.BLUEBERRY.id to DropTarget.RIGHT,
+        FruitType.GRAPE.id to DropTarget.RIGHT,
         FruitType.STRAWBERRY.id to DropTarget.RIGHT,
         FruitType.ORANGE.id to DropTarget.RIGHT
     ),

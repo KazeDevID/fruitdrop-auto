@@ -46,9 +46,9 @@ object FruitDropController {
 
     private fun loadConfig() {
         val p = prefs ?: return
-        val scanRelX = p.getFloat("scanRelX", 0.085f)
+        val scanRelX = p.getFloat("scanRelX", 0.086f)
         val scanRelY = p.getFloat("scanRelY", 0.281f)
-        val scanRadius = p.getInt("scanRadiusDp", 24)
+        val scanRadius = p.getInt("scanRadiusDp", 13)
         val dropLeftRelX = p.getFloat("dropLeftRelX", 0.095f)
         val dropRightRelX = p.getFloat("dropRightRelX", 0.915f)
         val dropRelY = p.getFloat("dropRelY", 0.406f)
@@ -151,6 +151,11 @@ object FruitDropController {
 
     fun setDropDelay(delayMs: Long) {
         _config.update { it.copy(dropDelayMs = delayMs) }
+        saveConfig()
+    }
+
+    fun setScanRadiusDp(radiusDp: Int) {
+        _config.update { it.copy(scanRadiusDp = radiusDp.coerceIn(8, 30)) }
         saveConfig()
     }
 

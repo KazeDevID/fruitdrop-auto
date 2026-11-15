@@ -650,6 +650,7 @@ fun FruitRulesTab() {
         FruitType.KIWI_HIJAU,
         FruitType.PEACH,
         FruitType.BLUEBERRY,
+        FruitType.GRAPE,
         FruitType.STRAWBERRY,
         FruitType.ORANGE
     )
@@ -893,16 +894,34 @@ fun CalibrationTab() {
                         onValueChange = { FruitDropController.updateCoordinates(scanRelY = it) }
                     )
 
+                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                        Text(
+                            text = "Ukuran Area Scan: ${config.scanRadiusDp} dp",
+                            fontSize = 11.sp,
+                            color = OnSurfaceWhite
+                        )
+                        Slider(
+                            value = config.scanRadiusDp.toFloat(),
+                            onValueChange = { FruitDropController.setScanRadiusDp(it.toInt()) },
+                            valueRange = 8f..28f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = FruitDropBlue,
+                                activeTrackColor = FruitDropBlue
+                            )
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = {
                             FruitDropController.updateCoordinates(
-                                scanRelX = 0.085f,
+                                scanRelX = 0.086f,
                                 scanRelY = 0.281f,
                                 dropLeftRelX = 0.095f,
                                 dropRightRelX = 0.915f,
                                 dropRelY = 0.406f
                             )
+                            FruitDropController.setScanRadiusDp(13)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {

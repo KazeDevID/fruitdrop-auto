@@ -106,12 +106,25 @@ class FruitDropOverlayService : Service() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         lifecycleOwner = OverlayLifecycleOwner()
 
-        val metrics = resources.displayMetrics
-        screenWidth = metrics.widthPixels.coerceAtLeast(1)
-        screenHeight = metrics.heightPixels.coerceAtLeast(1)
-        screenDensity = metrics.densityDpi.coerceAtLeast(160)
+        updateRealDisplayMetrics()
 
         createNotificationChannel()
+    }
+
+    private fun updateRealDisplayMetrics() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            screenWidth = bounds.width().coerceAtLeast(1)
+            screenHeight = bounds.height().coerceAtLeast(1)
+            screenDensity = resources.configuration.densityDpi.coerceAtLeast(160)
+        } else {
+            val dm = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(dm)
+            screenWidth = dm.widthPixels.coerceAtLeast(1)
+            screenHeight = dm.heightPixels.coerceAtLeast(1)
+            screenDensity = dm.densityDpi.coerceAtLeast(160)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -366,14 +379,21 @@ class FruitDropOverlayService : Service() {
                                 val pixelStride = planes[0].pixelStride
                                 val rowStride = planes[0].rowStride
                                 val rowPadding = rowStride - pixelStride * screenWidth
+                                val paddedWidth = screenWidth + rowPadding / pixelStride
 
-                                val bmp = Bitmap.createBitmap(
-                                    screenWidth + rowPadding / pixelStride,
+                                val rawBmp = Bitmap.createBitmap(
+                                    paddedWidth,
                                     screenHeight,
                                     Bitmap.Config.ARGB_8888
                                 )
-                                bmp.copyPixelsFromBuffer(buffer)
-                                capturedBitmap = bmp
+                                rawBmp.copyPixelsFromBuffer(buffer)
+                                capturedBitmap = if (paddedWidth > screenWidth) {
+                                    val cropped = Bitmap.createBitmap(rawBmp, 0, 0, screenWidth, screenHeight)
+                                    rawBmp.recycle()
+                                    cropped
+                                } else {
+                                    rawBmp
+                                }
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error converting image to bitmap", e)
                             } finally {

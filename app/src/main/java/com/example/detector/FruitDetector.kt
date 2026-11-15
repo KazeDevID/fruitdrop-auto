@@ -10,33 +10,46 @@ import com.example.model.FruitType
 object FruitDetector {
 
     /**
-     * Classifies a single HSV color into the corresponding FruitType.
+     * Classifies a single HSV color into the corresponding Yeetalk FruitType.
+     * Calibrated directly against real Yeetalk Fruit Merge pixel samples.
      */
     fun classifyHsv(hue: Float, sat: Float, value: Float): FruitType {
+        // Ignore dark outlines, black seeds/eyes, and uninitialized pixels
+        if (value < 0.20f) return FruitType.UNKNOWN
+
+        // Ignore white/light-gray circle background & highlights
+        if (sat < 0.16f && value > 0.65f) return FruitType.UNKNOWN
+
+        // Ignore Yeetalk light sky-blue background & cyan scan ring
+        if (hue in 182f..216f && sat <= 0.68f && value >= 0.62f) return FruitType.UNKNOWN
+
         return when {
-            // Blueberry: violet / deep indigo / purple
-            hue in 215f..275f && sat >= 0.28f -> FruitType.BLUEBERRY
+            // Blueberry: deep indigo / blue-purple (H: 216..275)
+            hue in 216f..275f && sat >= 0.30f -> FruitType.BLUEBERRY
 
-            // Kiwi: vibrant lime green (Yellow-Green)
-            hue in 65f..135f && sat >= 0.22f -> FruitType.KIWI_HIJAU
+            // Grape: purple / magenta (H: 275..331)
+            hue in 275.01f..331f && sat >= 0.32f && value >= 0.30f -> FruitType.GRAPE
 
-            // Peach: soft warm coral/pastel peach (with high brightness and moderate saturation)
-            ((hue in 10f..35f) || (hue in 345f..360f)) && value >= 0.70f && sat in 0.15f..0.65f -> FruitType.PEACH
+            // Kiwi: bright lime/yellow-green flesh (H: 65..145)
+            hue in 65f..145f && sat >= 0.22f && value >= 0.25f -> FruitType.KIWI_HIJAU
 
-            // Strawberry: vivid red with high saturation
-            ((hue in 340f..360f) || (hue in 0f..15f)) && sat >= 0.55f -> FruitType.STRAWBERRY
+            // Peach: warm pastel salmon/apricot (H: 2..26, moderate saturation, high brightness)
+            hue in 2f..26f && sat in 0.18f..0.49f && value >= 0.78f -> FruitType.PEACH
 
-            // Orange: bright orange/amber
-            hue in 25f..60f && sat >= 0.50f -> FruitType.ORANGE
+            // Strawberry / Cherry: crimson/pinkish red (H >= 332 or vivid red H <= 16)
+            (hue >= 331.01f || (hue <= 16f && sat >= 0.50f)) && sat >= 0.45f && value >= 0.40f ->
+                FruitType.STRAWBERRY
+
+            // Orange / Tangerine: vivid orange / amber / yellow-orange
+            hue in 22f..64.99f && sat >= 0.50f && value >= 0.45f -> FruitType.ORANGE
 
             else -> FruitType.UNKNOWN
         }
     }
 
     /**
-     * Ultra-fast real-time detection of the fruit currently inside the scan area.
-     * Samples pixels in a circular radius, ignores background sky-blue and white border,
-     * and maps the dominant fruit hue to the exact fruit type.
+     * Ultra-fast real-time detection of the fruit inside the scan area.
+     * Uses bulk getPixels() into a compact square buffer for sub-millisecond scanning.
      */
     fun detectFruit(
         bitmap: Bitmap,
@@ -44,10 +57,23 @@ object FruitDetector {
     ): DetectionResult {
         val width = bitmap.width
         val height = bitmap.height
+        if (width <= 0 || height <= 0) {
+            return DetectionResult(FruitType.UNKNOWN, DropTarget.NONE, 0f, 0f, 0f, 0f)
+        }
 
         val centerX = (config.scanRelX * width).toInt().coerceIn(0, width - 1)
         val centerY = (config.scanRelY * height).toInt().coerceIn(0, height - 1)
-        val sampleRadius = (config.scanRadiusDp * (width / 360f)).toInt().coerceIn(10, 80)
+        val sampleRadius = (config.scanRadiusDp * (width / 360f)).toInt().coerceIn(8, 70)
+
+        val xMin = (centerX - sampleRadius).coerceAtLeast(0)
+        val xMax = (centerX + sampleRadius).coerceAtMost(width - 1)
+        val yMin = (centerY - sampleRadius).coerceAtLeast(0)
+        val yMax = (centerY + sampleRadius).coerceAtMost(height - 1)
+
+        val boxW = (xMax - xMin + 1).coerceAtLeast(1)
+        val boxH = (yMax - yMin + 1).coerceAtLeast(1)
+        val pixels = IntArray(boxW * boxH)
+        bitmap.getPixels(pixels, 0, boxW, xMin, yMin, boxW, boxH)
 
         var totalHue = 0f
         var totalSat = 0f
@@ -55,52 +81,41 @@ object FruitDetector {
         var validPixelCount = 0
 
         val hsv = FloatArray(3)
-
-        val xMin = (centerX - sampleRadius).coerceAtLeast(0)
-        val xMax = (centerX + sampleRadius).coerceAtMost(width - 1)
-        val yMin = (centerY - sampleRadius).coerceAtLeast(0)
-        val yMax = (centerY + sampleRadius).coerceAtMost(height - 1)
-
         val radiusSquared = sampleRadius * sampleRadius
         val step = 2
 
         val voteCounts = mutableMapOf<FruitType, Int>()
 
-        for (y in yMin..yMax step step) {
-            val dy = y - centerY
-            for (x in xMin..xMax step step) {
-                val dx = x - centerX
-                if (dx * dx + dy * dy > radiusSquared) continue
+        var yOffset = 0
+        while (yOffset < boxH) {
+            val dy = (yMin + yOffset) - centerY
+            val dySq = dy * dy
+            var xOffset = 0
+            while (xOffset < boxW) {
+                val dx = (xMin + xOffset) - centerX
+                if (dx * dx + dySq <= radiusSquared) {
+                    val pixel = pixels[yOffset * boxW + xOffset]
+                    val r = Color.red(pixel)
+                    val g = Color.green(pixel)
+                    val b = Color.blue(pixel)
 
-                val pixel = bitmap.getPixel(x, y)
-                val r = Color.red(pixel)
-                val g = Color.green(pixel)
-                val b = Color.blue(pixel)
+                    Color.RGBToHSV(r, g, b, hsv)
+                    val hue = hsv[0]
+                    val sat = hsv[1]
+                    val value = hsv[2]
 
-                Color.RGBToHSV(r, g, b, hsv)
-                val hue = hsv[0]
-                val sat = hsv[1]
-                val value = hsv[2]
-
-                // Filter out transparent or fully black/uninitialized pixels
-                if (value < 0.15f) continue
-
-                // Filter out white/light-gray circle border
-                if (sat < 0.18f && value > 0.70f) continue
-
-                // Filter out Yeetalk light sky-blue background: hue ~190° - 215°
-                if (hue in 190f..215f && sat in 0.15f..0.55f && value > 0.75f) continue
-
-                val classified = classifyHsv(hue, sat, value)
-                if (classified != FruitType.UNKNOWN) {
-                    voteCounts[classified] = (voteCounts[classified] ?: 0) + 1
+                    val classified = classifyHsv(hue, sat, value)
+                    if (classified != FruitType.UNKNOWN) {
+                        voteCounts[classified] = (voteCounts[classified] ?: 0) + 1
+                        totalHue += hue
+                        totalSat += sat
+                        totalVal += value
+                        validPixelCount++
+                    }
                 }
-
-                totalHue += hue
-                totalSat += sat
-                totalVal += value
-                validPixelCount++
+                xOffset += step
             }
+            yOffset += step
         }
 
         if (validPixelCount < 5) {
@@ -118,16 +133,19 @@ object FruitDetector {
         val avgSat = totalSat / validPixelCount
         val avgVal = totalVal / validPixelCount
 
-        // Best candidate with highest votes
         val maxEntry = voteCounts.maxByOrNull { it.value }
-        val detectedFruit = if (maxEntry != null && maxEntry.value >= 3) {
+        val detectedFruit = if (maxEntry != null && maxEntry.value >= 5) {
             maxEntry.key
         } else {
-            classifyHsv(avgHue, avgSat, avgVal)
+            FruitType.UNKNOWN
         }
 
         val target = config.getTargetForFruit(detectedFruit)
-        val confidence = if (detectedFruit != FruitType.UNKNOWN) 0.95f else 0.0f
+        val confidence = if (detectedFruit != FruitType.UNKNOWN && maxEntry != null) {
+            (maxEntry.value.toFloat() / validPixelCount.toFloat()).coerceIn(0f, 1f)
+        } else {
+            0.0f
+        }
 
         return DetectionResult(
             fruit = detectedFruit,

@@ -30,15 +30,23 @@ enum class FruitType(
         defaultTarget = DropTarget.LEFT,
         badgeColor = 0xFFFF9E80,
         isMarkedByUser = true,
-        description = "Ditandai user: Drop paling kiri (warna peach/pink pastel berdaun)"
+        description = "Ditandai user: Drop paling kiri (warna peach/pastel berdaun)"
     ),
     BLUEBERRY(
         id = "blueberry",
-        displayName = "Blueberry / Anggur",
+        displayName = "Blueberry",
         defaultTarget = DropTarget.RIGHT,
         badgeColor = 0xFF5364DE,
         isMarkedByUser = false,
-        description = "Kecil dari kiwi: Drop paling kanan (ungu/indigo)"
+        description = "Kecil dari kiwi: Drop paling kanan (biru keunguan)"
+    ),
+    GRAPE(
+        id = "grape",
+        displayName = "Anggur Ungu",
+        defaultTarget = DropTarget.RIGHT,
+        badgeColor = 0xFFAB47BC,
+        isMarkedByUser = false,
+        description = "Kecil dari kiwi: Drop paling kanan (ungu magenta)"
     ),
     STRAWBERRY(
         id = "strawberry",
