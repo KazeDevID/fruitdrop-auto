@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.update
 object FruitDropController {
 
     private const val PREFS_NAME = "fruit_drop_prefs"
+    private const val CURRENT_PREFS_VERSION = 3
     private var prefs: SharedPreferences? = null
 
     private val _config = MutableStateFlow(FruitDropConfig())
@@ -46,15 +47,29 @@ object FruitDropController {
 
     private fun loadConfig() {
         val p = prefs ?: return
-        val scanRelX = p.getFloat("scanRelX", 0.086f)
-        val scanRelY = p.getFloat("scanRelY", 0.281f)
-        val scanRadius = p.getInt("scanRadiusDp", 13)
+        val prefsVersion = p.getInt("prefsVersion", 0)
+        var scanRelX = p.getFloat("scanRelX", 0.086f)
+        var scanRelY = p.getFloat("scanRelY", 0.281f)
+        var scanRadius = p.getInt("scanRadiusDp", 13)
         val dropLeftRelX = p.getFloat("dropLeftRelX", 0.095f)
         val dropRightRelX = p.getFloat("dropRightRelX", 0.915f)
         val dropRelY = p.getFloat("dropRelY", 0.406f)
         val dropDelay = p.getLong("dropDelayMs", 250L)
         val showMarkers = p.getBoolean("showMarkers", true)
         val showScanBox = p.getBoolean("showScanBox", true)
+
+        // Migrate legacy v1.0.0–v1.0.2 scan defaults so upgrades don't stay stuck on old timer-overlapping circle
+        if (prefsVersion < CURRENT_PREFS_VERSION) {
+            if (scanRadius >= 22) {
+                scanRadius = 13
+            }
+            if (kotlin.math.abs(scanRelX - 0.085f) < 0.002f) {
+                scanRelX = 0.086f
+            }
+            if (kotlin.math.abs(scanRelY - 0.281f) < 0.002f) {
+                scanRelY = 0.281f
+            }
+        }
 
         _config.update {
             it.copy(
@@ -69,11 +84,16 @@ object FruitDropController {
                 showScanBox = showScanBox
             )
         }
+
+        if (prefsVersion < CURRENT_PREFS_VERSION) {
+            saveConfig()
+        }
     }
 
     private fun saveConfig() {
         val p = prefs?.edit() ?: return
         val current = _config.value
+        p.putInt("prefsVersion", CURRENT_PREFS_VERSION)
         p.putFloat("scanRelX", current.scanRelX)
         p.putFloat("scanRelY", current.scanRelY)
         p.putInt("scanRadiusDp", current.scanRadiusDp)

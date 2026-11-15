@@ -883,14 +883,14 @@ fun CalibrationTab() {
                     CoordinateSlider(
                         label = "Posisi Scan Buah (X): ${(config.scanRelX * 100).toInt()}%",
                         value = config.scanRelX,
-                        range = 0.02f..0.30f,
+                        range = 0.02f..0.95f,
                         onValueChange = { FruitDropController.updateCoordinates(scanRelX = it) }
                     )
 
                     CoordinateSlider(
                         label = "Posisi Scan Buah (Y): ${(config.scanRelY * 100).toInt()}%",
                         value = config.scanRelY,
-                        range = 0.15f..0.45f,
+                        range = 0.10f..0.55f,
                         onValueChange = { FruitDropController.updateCoordinates(scanRelY = it) }
                     )
 

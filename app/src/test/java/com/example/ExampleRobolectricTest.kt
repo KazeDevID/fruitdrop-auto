@@ -54,8 +54,9 @@ class ExampleRobolectricTest {
         // Kiwi: yellow-green ~80° hue
         assertEquals(FruitType.KIWI_HIJAU, FruitDetector.classifyHsv(80f, 0.70f, 0.85f))
 
-        // Peach: warm pastel salmon ~15° hue, S=0.33, V=0.98
+        // Peach: warm pastel salmon ~15° hue, both highlight (S=0.33) and shaded (S=0.55)
         assertEquals(FruitType.PEACH, FruitDetector.classifyHsv(15f, 0.33f, 0.98f))
+        assertEquals(FruitType.PEACH, FruitDetector.classifyHsv(14f, 0.55f, 0.90f))
 
         // Blueberry: deep indigo/violet ~235° hue
         assertEquals(FruitType.BLUEBERRY, FruitDetector.classifyHsv(235f, 0.75f, 0.85f))
@@ -63,11 +64,13 @@ class ExampleRobolectricTest {
         // Grape: purple/magenta ~305° hue
         assertEquals(FruitType.GRAPE, FruitDetector.classifyHsv(305f, 0.65f, 0.74f))
 
-        // Strawberry / Red Berry: crimson ~349° hue, S=0.56, V=0.98
+        // Strawberry / Red Berry: crimson ~349° hue and vivid red ~8° hue
         assertEquals(FruitType.STRAWBERRY, FruitDetector.classifyHsv(349f, 0.56f, 0.98f))
+        assertEquals(FruitType.STRAWBERRY, FruitDetector.classifyHsv(8f, 0.72f, 0.92f))
 
-        // Orange: bright orange ~29° hue, S=0.89, V=0.99
+        // Orange / Lemon: bright orange ~29° and yellow ~48°
         assertEquals(FruitType.ORANGE, FruitDetector.classifyHsv(29f, 0.89f, 0.99f))
+        assertEquals(FruitType.ORANGE, FruitDetector.classifyHsv(48f, 0.70f, 0.95f))
 
         // Sky blue background should be ignored
         assertEquals(FruitType.UNKNOWN, FruitDetector.classifyHsv(201f, 0.55f, 0.98f))
@@ -130,24 +133,50 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `detect blueberry from bitmap using pixel buffer`() {
+    fun `detect blueberry, grape, and orange from bitmap`() {
         val width = 360
         val height = 800
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-
         val config = FruitDropConfig(scanRelX = 0.5f, scanRelY = 0.5f, scanRadiusDp = 13)
         val cx = (config.scanRelX * width).toInt()
         val cy = (config.scanRelY * height).toInt()
 
-        val blueberryColor = Color.rgb(65, 80, 220)
+        val cases = listOf(
+            Color.rgb(65, 80, 220) to FruitType.BLUEBERRY,
+            Color.rgb(190, 50, 175) to FruitType.GRAPE,
+            Color.rgb(255, 138, 25) to FruitType.ORANGE
+        )
+
+        for ((rgb, expectedFruit) in cases) {
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            for (y in (cy - 10)..(cy + 10)) {
+                for (x in (cx - 10)..(cx + 10)) {
+                    bitmap.setPixel(x, y, rgb)
+                }
+            }
+            val result = FruitDetector.detectFruit(bitmap, config)
+            assertEquals(expectedFruit, result.fruit)
+            assertEquals(DropTarget.RIGHT, result.target)
+        }
+    }
+
+    @Test
+    fun `sky blue background reports UNKNOWN with diagnostic hue`() {
+        val width = 360
+        val height = 800
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val config = FruitDropConfig(scanRelX = 0.5f, scanRelY = 0.5f, scanRadiusDp = 13)
+        val cx = (config.scanRelX * width).toInt()
+        val cy = (config.scanRelY * height).toInt()
+
+        val skyBlue = Color.rgb(112, 200, 250)
         for (y in (cy - 10)..(cy + 10)) {
             for (x in (cx - 10)..(cx + 10)) {
-                bitmap.setPixel(x, y, blueberryColor)
+                bitmap.setPixel(x, y, skyBlue)
             }
         }
-
         val result = FruitDetector.detectFruit(bitmap, config)
-        assertEquals(FruitType.BLUEBERRY, result.fruit)
-        assertEquals(DropTarget.RIGHT, result.target)
+        assertEquals(FruitType.UNKNOWN, result.fruit)
+        assertEquals(DropTarget.NONE, result.target)
+        assertEquals(true, result.dominantHue in 190f..210f)
     }
 }

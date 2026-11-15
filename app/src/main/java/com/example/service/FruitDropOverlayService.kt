@@ -86,8 +86,11 @@ class FruitDropOverlayService : Service() {
     private var screenDensity = 320
 
     private var lastDropTime = 0L
+    private var lastDropAttemptTime = 0L
+    private var lastA11yCaptureTime = 0L
     private var isDropping = false
     private var isForegroundStarted = false
+    private var lastFrameBitmap: Bitmap? = null
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -223,7 +226,7 @@ class FruitDropOverlayService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
-        // 1. Fullscreen Markers View (pass-through by default via FLAG_NOT_TOUCHABLE)
+        // 1. Fullscreen Markers View spanning display cutouts so overlay aligns 1:1 with MediaProjection
         val mParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -235,6 +238,11 @@ class FruitDropOverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
         markersParams = mParams
 
@@ -255,7 +263,7 @@ class FruitDropOverlayService : Service() {
             Log.e(TAG, "Error adding markers view", e)
         }
 
-        // 2. Control Panel / Minimized Bubble View
+        // 2. Control Panel / Minimized Bubble View — positioned on upper-right so left preview circle is unobstructed
         val cParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -265,8 +273,13 @@ class FruitDropOverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 40
-            y = 120
+            x = (screenWidth * 0.36f).toInt()
+            y = (screenHeight * 0.05f).toInt().coerceAtLeast(60)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
         controlParams = cParams
 
@@ -366,29 +379,29 @@ class FruitDropOverlayService : Service() {
         detectionJob = serviceScope.launch(Dispatchers.Default) {
             while (isActive) {
                 try {
-                    var capturedBitmap: Bitmap? = null
-
-                    // Primary: Grab frame from ImageReader if MediaProjection is active
                     val reader = imageReader
                     if (reader != null) {
                         val image = reader.acquireLatestImage()
                         if (image != null) {
+                            var freshBitmap: Bitmap? = null
                             try {
                                 val planes = image.planes
                                 val buffer: ByteBuffer = planes[0].buffer
                                 val pixelStride = planes[0].pixelStride
                                 val rowStride = planes[0].rowStride
-                                val rowPadding = rowStride - pixelStride * screenWidth
-                                val paddedWidth = screenWidth + rowPadding / pixelStride
+                                val imgWidth = image.width.coerceAtLeast(1)
+                                val imgHeight = image.height.coerceAtLeast(1)
+                                val rowPadding = (rowStride - pixelStride * imgWidth).coerceAtLeast(0)
+                                val paddedWidth = imgWidth + rowPadding / pixelStride
 
                                 val rawBmp = Bitmap.createBitmap(
                                     paddedWidth,
-                                    screenHeight,
+                                    imgHeight,
                                     Bitmap.Config.ARGB_8888
                                 )
                                 rawBmp.copyPixelsFromBuffer(buffer)
-                                capturedBitmap = if (paddedWidth > screenWidth) {
-                                    val cropped = Bitmap.createBitmap(rawBmp, 0, 0, screenWidth, screenHeight)
+                                freshBitmap = if (paddedWidth > imgWidth) {
+                                    val cropped = Bitmap.createBitmap(rawBmp, 0, 0, imgWidth, imgHeight)
                                     rawBmp.recycle()
                                     cropped
                                 } else {
@@ -399,25 +412,35 @@ class FruitDropOverlayService : Service() {
                             } finally {
                                 image.close()
                             }
-                        }
-                    }
 
-                    // Secondary fallback: AccessibilityService screenshot
-                    if (capturedBitmap == null && FruitDropAccessibilityService.instance != null) {
-                        FruitDropAccessibilityService.instance?.captureScreen { bmp ->
-                            if (bmp != null) {
-                                try {
-                                    processBitmapAndDrop(bmp)
-                                } finally {
-                                    if (!bmp.isRecycled) bmp.recycle()
+                            if (freshBitmap != null) {
+                                val previous = lastFrameBitmap
+                                lastFrameBitmap = freshBitmap
+                                if (previous != null && previous !== freshBitmap && !previous.isRecycled) {
+                                    previous.recycle()
                                 }
                             }
                         }
-                    } else if (capturedBitmap != null) {
-                        try {
-                            processBitmapAndDrop(capturedBitmap)
-                        } finally {
-                            if (!capturedBitmap.isRecycled) capturedBitmap.recycle()
+
+                        // Always analyze latest cached frame even when static screen produces null acquireLatestImage()
+                        val frameToScan = lastFrameBitmap
+                        if (frameToScan != null && !frameToScan.isRecycled) {
+                            processBitmapAndDrop(frameToScan)
+                        }
+                    } else if (FruitDropAccessibilityService.instance != null) {
+                        // Throttled secondary fallback only when MediaProjection ImageReader is absent
+                        val now = System.currentTimeMillis()
+                        if (now - lastA11yCaptureTime >= 1100L) {
+                            lastA11yCaptureTime = now
+                            FruitDropAccessibilityService.instance?.captureScreen { bmp ->
+                                if (bmp != null) {
+                                    try {
+                                        processBitmapAndDrop(bmp)
+                                    } finally {
+                                        if (!bmp.isRecycled) bmp.recycle()
+                                    }
+                                }
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -436,9 +459,15 @@ class FruitDropOverlayService : Service() {
 
         if (!config.autoPlayEnabled) return
         if (result.fruit == FruitType.UNKNOWN) return
+        if (result.confidence < 0.45f) return
 
         val now = System.currentTimeMillis()
         val cooldown = config.dropDelayMs
+
+        if (isDropping && now - lastDropAttemptTime > 1200L) {
+            // Safety reset if gesture callback was ever dropped by system
+            isDropping = false
+        }
 
         if (now - lastDropTime < cooldown) return
         if (isDropping) return
@@ -456,6 +485,7 @@ class FruitDropOverlayService : Service() {
         val targetY = config.dropRelY * screenHeight
 
         isDropping = true
+        lastDropAttemptTime = now
         accessibility.performClick(targetX, targetY) { success ->
             isDropping = false
             if (success) {
@@ -475,6 +505,11 @@ class FruitDropOverlayService : Service() {
         FruitDropController.setOverlayRunning(false)
         detectionJob?.cancel()
         serviceScope.cancel()
+
+        lastFrameBitmap?.let {
+            if (!it.isRecycled) it.recycle()
+        }
+        lastFrameBitmap = null
 
         try {
             controlComposeView?.let { windowManager.removeView(it) }

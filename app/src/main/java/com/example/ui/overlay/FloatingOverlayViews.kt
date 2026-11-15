@@ -64,7 +64,7 @@ fun FloatingPanelOverlay(
     ) {
         Column(
             modifier = Modifier
-                .width(230.dp)
+                .width(214.dp)
                 .padding(12.dp)
         ) {
             // Header / Drag handle
@@ -157,9 +157,17 @@ fun FloatingPanelOverlay(
             // Current Fruit Detection Status
             val detectedFruit = detection.fruit
             val targetText = when (config.getTargetForFruit(detectedFruit)) {
-                DropTarget.LEFT -> "Paling Kiri"
-                DropTarget.RIGHT -> "Paling Kanan"
+                DropTarget.LEFT -> "Kiri"
+                DropTarget.RIGHT -> "Kanan"
                 DropTarget.NONE -> "Siaga"
+            }
+            val pct = (detection.confidence * 100).toInt()
+            val statusText = if (detectedFruit != FruitType.UNKNOWN) {
+                "${detectedFruit.displayName} → $targetText ($pct%)"
+            } else if (detection.dominantHue > 0f) {
+                "Memindai... (H:${detection.dominantHue.toInt()}°)"
+            } else {
+                "Memindai Buah..."
             }
 
             Row(
@@ -178,11 +186,7 @@ fun FloatingPanelOverlay(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (detectedFruit != FruitType.UNKNOWN) {
-                        "${detectedFruit.displayName} → $targetText"
-                    } else {
-                        "Memindai Buah..."
-                    },
+                    text = statusText,
                     color = Color.White,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,

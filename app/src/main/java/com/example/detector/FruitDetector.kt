@@ -21,27 +21,28 @@ object FruitDetector {
         if (sat < 0.16f && value > 0.65f) return FruitType.UNKNOWN
 
         // Ignore Yeetalk light sky-blue background & cyan scan ring
-        if (hue in 182f..216f && sat <= 0.68f && value >= 0.62f) return FruitType.UNKNOWN
+        if (hue in 182f..215.99f && sat <= 0.68f && value >= 0.62f) return FruitType.UNKNOWN
 
         return when {
             // Blueberry: deep indigo / blue-purple (H: 216..275)
-            hue in 216f..275f && sat >= 0.30f -> FruitType.BLUEBERRY
+            hue in 216f..275f && sat >= 0.28f -> FruitType.BLUEBERRY
 
             // Grape: purple / magenta (H: 275..331)
-            hue in 275.01f..331f && sat >= 0.32f && value >= 0.30f -> FruitType.GRAPE
+            hue in 275.01f..331f && sat >= 0.30f && value >= 0.28f -> FruitType.GRAPE
 
-            // Kiwi: bright lime/yellow-green flesh (H: 65..145)
-            hue in 65f..145f && sat >= 0.22f && value >= 0.25f -> FruitType.KIWI_HIJAU
+            // Kiwi: bright lime/yellow-green flesh (H: 65..148)
+            hue in 65f..148f && sat >= 0.20f && value >= 0.25f -> FruitType.KIWI_HIJAU
 
-            // Peach: warm pastel salmon/apricot (H: 2..26, moderate saturation, high brightness)
-            hue in 2f..26f && sat in 0.18f..0.49f && value >= 0.78f -> FruitType.PEACH
+            // Peach: warm pastel salmon/apricot including shaded tones (H: 2..28, S: 0.16..0.59)
+            hue in 2f..28f && sat in 0.16f..0.59f && value >= 0.72f -> FruitType.PEACH
 
-            // Strawberry / Cherry: crimson/pinkish red (H >= 332 or vivid red H <= 16)
-            (hue >= 331.01f || (hue <= 16f && sat >= 0.50f)) && sat >= 0.45f && value >= 0.40f ->
+            // Strawberry / Cherry: vivid crimson/red (H > 331 or H <= 18 with high saturation)
+            ((hue >= 331.01f && sat >= 0.42f) || (hue <= 18f && sat >= 0.60f)) && value >= 0.35f ->
                 FruitType.STRAWBERRY
 
-            // Orange / Tangerine: vivid orange / amber / yellow-orange
-            hue in 22f..64.99f && sat >= 0.50f && value >= 0.45f -> FruitType.ORANGE
+            // Orange / Lemon: vivid amber/orange/yellow (H: 20..64.99)
+            ((hue in 20f..28f && sat >= 0.60f) || (hue in 28.01f..64.99f && sat >= 0.42f)) && value >= 0.42f ->
+                FruitType.ORANGE
 
             else -> FruitType.UNKNOWN
         }
@@ -80,6 +81,11 @@ object FruitDetector {
         var totalVal = 0f
         var validPixelCount = 0
 
+        var rawHue = 0f
+        var rawSat = 0f
+        var rawVal = 0f
+        var rawPixelCount = 0
+
         val hsv = FloatArray(3)
         val radiusSquared = sampleRadius * sampleRadius
         val step = 2
@@ -104,6 +110,13 @@ object FruitDetector {
                     val sat = hsv[1]
                     val value = hsv[2]
 
+                    if (value >= 0.15f) {
+                        rawHue += hue
+                        rawSat += sat
+                        rawVal += value
+                        rawPixelCount++
+                    }
+
                     val classified = classifyHsv(hue, sat, value)
                     if (classified != FruitType.UNKNOWN) {
                         voteCounts[classified] = (voteCounts[classified] ?: 0) + 1
@@ -119,13 +132,16 @@ object FruitDetector {
         }
 
         if (validPixelCount < 5) {
+            val diagHue = if (rawPixelCount > 0) rawHue / rawPixelCount else 0f
+            val diagSat = if (rawPixelCount > 0) rawSat / rawPixelCount else 0f
+            val diagVal = if (rawPixelCount > 0) rawVal / rawPixelCount else 0f
             return DetectionResult(
                 fruit = FruitType.UNKNOWN,
                 target = DropTarget.NONE,
                 confidence = 0f,
-                dominantHue = 0f,
-                dominantSat = 0f,
-                dominantVal = 0f
+                dominantHue = diagHue,
+                dominantSat = diagSat,
+                dominantVal = diagVal
             )
         }
 
@@ -134,18 +150,20 @@ object FruitDetector {
         val avgVal = totalVal / validPixelCount
 
         val maxEntry = voteCounts.maxByOrNull { it.value }
-        val detectedFruit = if (maxEntry != null && maxEntry.value >= 5) {
+        val rawConfidence = if (maxEntry != null) {
+            (maxEntry.value.toFloat() / validPixelCount.toFloat()).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+
+        val detectedFruit = if (maxEntry != null && maxEntry.value >= 5 && rawConfidence >= 0.45f) {
             maxEntry.key
         } else {
             FruitType.UNKNOWN
         }
 
         val target = config.getTargetForFruit(detectedFruit)
-        val confidence = if (detectedFruit != FruitType.UNKNOWN && maxEntry != null) {
-            (maxEntry.value.toFloat() / validPixelCount.toFloat()).coerceIn(0f, 1f)
-        } else {
-            0.0f
-        }
+        val confidence = if (detectedFruit != FruitType.UNKNOWN) rawConfidence else 0f
 
         return DetectionResult(
             fruit = detectedFruit,
