@@ -270,6 +270,33 @@ fun FloatingPanelOverlay(
                     fontWeight = FontWeight.Bold
                 )
             }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Toggle Calibration Drag Mode
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (config.isCalibrating) Color(0xFF4A3200) else Color(0xFF192231))
+                    .clickable { FruitDropController.toggleCalibrating() }
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .testTag("toggle_calibration"),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Geser Titik",
+                    color = Color.White,
+                    fontSize = 11.sp
+                )
+                Text(
+                    text = if (config.isCalibrating) "TERBUKA" else "TERKUNCI",
+                    color = if (config.isCalibrating) Color(0xFFFFD54F) else Color.Gray,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }

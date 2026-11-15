@@ -16,6 +16,7 @@ data class FruitDropConfig(
     val autoPlayEnabled: Boolean = false,
     val showMarkers: Boolean = true,   // "Penanda Titik: ON/OFF"
     val showScanBox: Boolean = true,   // Visual bounding circle for calibration
+    val isCalibrating: Boolean = false, // Unlock dragging markers (disables touch pass-through)
     val isMinimized: Boolean = false,  // Minimized to small bubble mode
 
     // Drop rules per fruit

@@ -1,5 +1,6 @@
 package com.example.service
 
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -18,7 +20,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
@@ -26,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
@@ -44,6 +46,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
@@ -71,6 +75,7 @@ class FruitDropOverlayService : Service() {
 
     private var lifecycleOwner: OverlayLifecycleOwner? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
+    private var detectionJob: Job? = null
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -81,8 +86,16 @@ class FruitDropOverlayService : Service() {
     private var screenDensity = 320
 
     private var lastDropTime = 0L
-    private var lastDetectedFruit: FruitType = FruitType.UNKNOWN
     private var isDropping = false
+    private var isForegroundStarted = false
+
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            super.onStop()
+            Log.d(TAG, "MediaProjection stopped by system")
+            stopSelf()
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -94,19 +107,16 @@ class FruitDropOverlayService : Service() {
         lifecycleOwner = OverlayLifecycleOwner()
 
         val metrics = resources.displayMetrics
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
-        screenDensity = metrics.densityDpi
+        screenWidth = metrics.widthPixels.coerceAtLeast(1)
+        screenHeight = metrics.heightPixels.coerceAtLeast(1)
+        screenDensity = metrics.densityDpi.coerceAtLeast(160)
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
-
-        initOverlayViews()
-        FruitDropController.setOverlayRunning(true)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
+        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
+            ?: Activity.RESULT_CANCELED
         val resultData: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
         } else {
@@ -114,13 +124,47 @@ class FruitDropOverlayService : Service() {
             intent?.getParcelableExtra(EXTRA_RESULT_DATA)
         }
 
-        if (resultCode != 0 && resultData != null && mediaProjection == null) {
-            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
-            setupVirtualDisplay()
+        if (resultCode != Activity.RESULT_OK || resultData == null) {
+            if (!isForegroundStarted) {
+                Log.w(TAG, "Missing MediaProjection permission result; stopping service.")
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            return START_STICKY
         }
 
-        startDetectionLoop()
+        try {
+            if (!isForegroundStarted) {
+                val fgType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                } else {
+                    0
+                }
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, createNotification(), fgType)
+                isForegroundStarted = true
+            }
+
+            if (controlComposeView == null) {
+                initOverlayViews()
+                observeCalibrationMode()
+                FruitDropController.setOverlayRunning(true)
+            }
+
+            if (mediaProjection == null) {
+                val projectionManager =
+                    getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
+                mediaProjection?.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+                setupVirtualDisplay()
+            }
+
+            startDetectionLoop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start FruitDropOverlayService", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         return START_STICKY
     }
 
@@ -150,7 +194,7 @@ class FruitDropOverlayService : Service() {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("FruitDrop Auto Active")
             .setContentText("Memantau game Yeetalk secara real-time")
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -159,18 +203,22 @@ class FruitDropOverlayService : Service() {
     private fun initOverlayViews() {
         val owner = lifecycleOwner ?: return
 
-        // 1. Fullscreen Markers View (KIRI / KANAN guide lines & circles)
+        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
+        // 1. Fullscreen Markers View (pass-through by default via FLAG_NOT_TOUCHABLE)
         val mParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
+            overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -198,13 +246,9 @@ class FruitDropOverlayService : Service() {
         val cParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
+            overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -243,11 +287,38 @@ class FruitDropOverlayService : Service() {
         }
     }
 
+    private fun observeCalibrationMode() {
+        serviceScope.launch {
+            FruitDropController.config
+                .map { it.isCalibrating }
+                .distinctUntilChanged()
+                .collect { calibrating ->
+                    val params = markersParams ?: return@collect
+                    val view = markersComposeView ?: return@collect
+                    params.flags = if (calibrating) {
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                    } else {
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                    }
+                    try {
+                        windowManager.updateViewLayout(view, params)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating markers touchability", e)
+                    }
+                }
+        }
+    }
+
     private fun updateControlPosition(dx: Float, dy: Float) {
         val params = controlParams ?: return
         val view = controlComposeView ?: return
-        params.x = (params.x + dx.toInt()).coerceIn(0, screenWidth - 100)
-        params.y = (params.y + dy.toInt()).coerceIn(40, screenHeight - 150)
+        params.x = (params.x + dx.toInt()).coerceIn(0, (screenWidth - 100).coerceAtLeast(0))
+        params.y = (params.y + dy.toInt()).coerceIn(40, (screenHeight - 150).coerceAtLeast(40))
         try {
             windowManager.updateViewLayout(view, params)
         } catch (e: Exception) {
@@ -278,10 +349,10 @@ class FruitDropOverlayService : Service() {
     }
 
     private fun startDetectionLoop() {
-        serviceScope.launch(Dispatchers.Default) {
+        if (detectionJob?.isActive == true) return
+        detectionJob = serviceScope.launch(Dispatchers.Default) {
             while (isActive) {
                 try {
-                    val config = FruitDropController.config.value
                     var capturedBitmap: Bitmap? = null
 
                     // Primary: Grab frame from ImageReader if MediaProjection is active
@@ -315,13 +386,20 @@ class FruitDropOverlayService : Service() {
                     if (capturedBitmap == null && FruitDropAccessibilityService.instance != null) {
                         FruitDropAccessibilityService.instance?.captureScreen { bmp ->
                             if (bmp != null) {
-                                processBitmapAndDrop(bmp)
+                                try {
+                                    processBitmapAndDrop(bmp)
+                                } finally {
+                                    if (!bmp.isRecycled) bmp.recycle()
+                                }
                             }
                         }
                     } else if (capturedBitmap != null) {
-                        processBitmapAndDrop(capturedBitmap)
+                        try {
+                            processBitmapAndDrop(capturedBitmap)
+                        } finally {
+                            if (!capturedBitmap.isRecycled) capturedBitmap.recycle()
+                        }
                     }
-
                 } catch (e: Exception) {
                     Log.e(TAG, "Detection loop exception", e)
                 }
@@ -342,7 +420,6 @@ class FruitDropOverlayService : Service() {
         val now = System.currentTimeMillis()
         val cooldown = config.dropDelayMs
 
-        // Avoid dropping multiple times for the exact same frame occurrence
         if (now - lastDropTime < cooldown) return
         if (isDropping) return
 
@@ -363,7 +440,6 @@ class FruitDropOverlayService : Service() {
             isDropping = false
             if (success) {
                 lastDropTime = System.currentTimeMillis()
-                lastDetectedFruit = result.fruit
                 if (target == DropTarget.LEFT) {
                     FruitDropController.incrementLeftCount()
                 } else {
@@ -377,6 +453,7 @@ class FruitDropOverlayService : Service() {
         super.onDestroy()
         instance = null
         FruitDropController.setOverlayRunning(false)
+        detectionJob?.cancel()
         serviceScope.cancel()
 
         try {
@@ -386,6 +463,10 @@ class FruitDropOverlayService : Service() {
             Log.e(TAG, "Error removing overlay views", e)
         }
 
+        try {
+            mediaProjection?.unregisterCallback(projectionCallback)
+        } catch (_: Exception) {
+        }
         virtualDisplay?.release()
         imageReader?.close()
         mediaProjection?.stop()

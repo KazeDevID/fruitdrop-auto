@@ -84,13 +84,17 @@ class FruitDropAccessibilityService : AccessibilityService() {
                 mainExecutor,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshot: ScreenshotResult) {
+                        var hardwareBitmap: Bitmap? = null
                         try {
                             val hardwareBuffer = screenshot.hardwareBuffer
                             val colorSpace = screenshot.colorSpace
-                            val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
+                            hardwareBitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
                             hardwareBuffer.close()
-                            onCaptured(bitmap)
+                            val softwareBitmap = hardwareBitmap?.copy(Bitmap.Config.ARGB_8888, false)
+                            hardwareBitmap?.recycle()
+                            onCaptured(softwareBitmap)
                         } catch (e: Exception) {
+                            hardwareBitmap?.recycle()
                             Log.e(TAG, "Error processing screenshot", e)
                             onCaptured(null)
                         }

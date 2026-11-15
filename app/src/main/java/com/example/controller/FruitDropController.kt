@@ -115,6 +115,17 @@ object FruitDropController {
         }
     }
 
+    fun toggleCalibrating() {
+        _config.update {
+            val next = !it.isCalibrating
+            it.copy(
+                isCalibrating = next,
+                showMarkers = if (next) true else it.showMarkers,
+                showScanBox = if (next) true else it.showScanBox
+            )
+        }
+    }
+
     fun setMinimized(minimized: Boolean) {
         _config.update { it.copy(isMinimized = minimized) }
     }

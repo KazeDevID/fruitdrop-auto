@@ -1,19 +1,24 @@
 package com.example
 
+import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.TextUtils
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -135,9 +140,34 @@ class MainActivity : ComponentActivity() {
     }
 
     private var pendingMediaProjectionLauncher: ((Intent) -> Unit)? = null
+    private var pendingNotificationLauncher: ((String) -> Unit)? = null
 
     fun setMediaProjectionLauncher(launcher: (Intent) -> Unit) {
         pendingMediaProjectionLauncher = launcher
+    }
+
+    fun setNotificationPermissionLauncher(launcher: (String) -> Unit) {
+        pendingNotificationLauncher = launcher
+    }
+
+    fun isAccessibilityEnabled(): Boolean {
+        if (FruitDropAccessibilityService.instance != null) return true
+        return try {
+            val expectedComponent = ComponentName(this, FruitDropAccessibilityService::class.java)
+            val enabledServices = Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: return false
+            val splitter = TextUtils.SimpleStringSplitter(':')
+            splitter.setString(enabledServices)
+            while (splitter.hasNext()) {
+                val componentName = ComponentName.unflattenFromString(splitter.next())
+                if (componentName == expectedComponent) return true
+            }
+            false
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun startOverlayFlow() {
@@ -147,29 +177,47 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        if (FruitDropAccessibilityService.instance == null) {
+        if (!isAccessibilityEnabled()) {
             Toast.makeText(this, "Harap aktifkan Layanan Aksesibilitas FruitDrop!", Toast.LENGTH_LONG).show()
             requestAccessibilityPermission()
             return
         }
 
-        // Request MediaProjection for high-speed screen capture
-        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val intent = projectionManager.createScreenCaptureIntent()
-        pendingMediaProjectionLauncher?.invoke(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingNotificationLauncher?.invoke(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+
+        launchMediaProjectionPrompt()
+    }
+
+    fun launchMediaProjectionPrompt() {
+        try {
+            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            val intent = projectionManager.createScreenCaptureIntent()
+            pendingMediaProjectionLauncher?.invoke(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Gagal meminta izin rekam layar: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     fun startOverlayWithCaptureData(resultCode: Int, data: Intent) {
-        val intent = Intent(this, FruitDropOverlayService::class.java).apply {
-            putExtra(FruitDropOverlayService.EXTRA_RESULT_CODE, resultCode)
-            putExtra(FruitDropOverlayService.EXTRA_RESULT_DATA, data)
+        try {
+            val intent = Intent(this, FruitDropOverlayService::class.java).apply {
+                putExtra(FruitDropOverlayService.EXTRA_RESULT_CODE, resultCode)
+                putExtra(FruitDropOverlayService.EXTRA_RESULT_DATA, data)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            Toast.makeText(this, "FruitDrop Overlay Aktif! Buka Yeetalk sekarang.", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Gagal menjalankan overlay: ${e.message}", Toast.LENGTH_LONG).show()
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-        Toast.makeText(this, "FruitDrop Overlay Aktif! Buka Yeetalk sekarang.", Toast.LENGTH_SHORT).show()
     }
 
     private fun stopOverlay() {
@@ -204,7 +252,9 @@ fun MainAppDashboard(
                 } else {
                     true
                 }
-                FruitDropController.setAccessibilityConnected(FruitDropAccessibilityService.instance != null)
+                val a11yEnabled = (context as? MainActivity)?.isAccessibilityEnabled()
+                    ?: (FruitDropAccessibilityService.instance != null)
+                FruitDropController.setAccessibilityConnected(a11yEnabled)
                 FruitDropController.setOverlayRunning(FruitDropOverlayService.instance != null)
             }
         }
@@ -224,9 +274,18 @@ fun MainAppDashboard(
         }
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        (context as? MainActivity)?.launchMediaProjectionPrompt()
+    }
+
     DisposableEffect(Unit) {
         (context as? MainActivity)?.setMediaProjectionLauncher { intent ->
             mediaProjectionLauncher.launch(intent)
+        }
+        (context as? MainActivity)?.setNotificationPermissionLauncher { perm ->
+            notificationPermissionLauncher.launch(perm)
         }
         onDispose { }
     }
@@ -240,7 +299,7 @@ fun MainAppDashboard(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
-                            painter = painterResource(id = R.mipmap.ic_launcher),
+                            painter = painterResource(id = R.drawable.fruitdrop_icon_1794722622121),
                             contentDescription = "FruitDrop App Icon",
                             modifier = Modifier
                                 .size(36.dp)
