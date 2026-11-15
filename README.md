@@ -41,10 +41,8 @@ Aplikasi Android cerdas berbasis **Jetpack Compose** untuk memainkan game **Frui
 
 ---
 
-## 📦 Unduh APK melalui GitHub Actions
+## 📦 Unduh APK melalui GitHub Releases / Actions
 
-Aplikasi ini dilengkapi dengan **GitHub Actions Workflow** otomatis:
-1. Buka tab **Actions** di repositori GitHub ini.
-2. Pilih workflow **Build & Release FruitDrop APK**.
-3. Unduh artifact `FruitDrop-Yeetalk-AutoDrop-APK` yang berisi file `FruitDrop-Auto-v1.0.apk`.
-4. Pasang (install) di perangkat Android Anda!
+1. **Paling Mudah (Langsung file `.apk`)**: Buka tab **Releases** di repositori GitHub ini, lalu unduh file **`FruitDrop-Auto-v1.x.apk`** (jangan pilih Source Code `.zip`).
+2. **Melalui Actions**: Buka tab **Actions** → pilih **Build & Release FruitDrop APK** → unduh artifact `FruitDrop-Yeetalk-AutoDrop-APK` dan ekstrak file `.zip` nya terlebih dahulu sebelum memasang APK.
+3. Jika sebelumnya terpasang versi lain dengan tanda tangan berbeda dan gagal memperbarui, **hapus (uninstall)** aplikasi FruitDrop lama terlebih dahulu sebelum memasang versi terbaru.

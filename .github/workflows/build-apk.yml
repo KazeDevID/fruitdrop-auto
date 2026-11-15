@@ -55,40 +55,60 @@ jobs:
             gradle :app:assembleDebug --stacktrace
           fi
 
-      - name: Prepare APK artifact
+      - name: Prepare, Align & Sign APK (v1 + v2 + v3)
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/FruitDrop-Auto-v1.0.apk
+          VERSION_TAG="${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.5' }}"
+          APK_NAME="FruitDrop-Auto-${VERSION_TAG}.apk"
+          RAW_APK="app/build/outputs/apk/debug/app-debug.apk"
+          BUILD_TOOLS_DIR=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
+          echo "Using build-tools: $BUILD_TOOLS_DIR"
+          "$BUILD_TOOLS_DIR/zipalign" -f -p 4 "$RAW_APK" "release-output/aligned.apk"
+          "$BUILD_TOOLS_DIR/apksigner" sign \
+            --ks debug.keystore \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "release-output/${APK_NAME}" \
+            "release-output/aligned.apk"
+          rm -f "release-output/aligned.apk"
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose "release-output/${APK_NAME}"
+          echo "APK_PATH=release-output/${APK_NAME}" >> "$GITHUB_ENV"
+          echo "APK_NAME=${APK_NAME}" >> "$GITHUB_ENV"
           ls -la release-output/
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
           name: FruitDrop-Yeetalk-AutoDrop-APK
-          path: release-output/FruitDrop-Auto-v1.0.apk
+          path: ${{ env.APK_PATH }}
           retention-days: 30
 
       - name: Create or Update GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          name: "FruitDrop Auto (${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }})"
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+          name: "FruitDrop Auto (${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.5' }})"
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.5' }}
           draft: false
           prerelease: false
           body: |
             ## 🍓 FruitDrop - Yeetalk Fruit Merge Auto Bot
-            
+
             Aplikasi otomatis menjatuhkan buah untuk game Fruit Merge di Yeetalk:
             - **Kiwi Hijau** & **Buah Persik (Peach)** otomatis drop ke **Paling Kiri**.
-            - **Buah kecil lain** (Blueberry, Stroberi, Jeruk) otomatis drop ke **Paling Kanan**.
-            - **Real-time Fruit Detection** dengan kecepatan tinggi.
+            - **Buah kecil lain** (Blueberry, Anggur, Stroberi, Jeruk) otomatis drop ke **Paling Kanan**.
+            - **Real-time Fruit Detection** dengan kecepatan tinggi & akurasi kalibrasi.
             - **Floating Window & Minimized Bubble** yang praktis di atas game.
             - **Penanda Titik & Scanner Visual** yang dapat digeser di layar.
-            
-            ### 📥 Unduh APK
-            Unduh file `FruitDrop-Auto-v1.0.apk` di bawah ini dan pasang di perangkat Android Anda.
+
+            ### 📥 Cara Pasang (Install)
+            1. Unduh file **`${{ env.APK_NAME }}`** dari daftar **Assets** di bawah ini (bukan file Source Code `.zip`).
+            2. Jika sebelumnya terpasang versi lama dengan tanda tangan berbeda dan muncul gagal pasang, **hapus (uninstall)** versi lama terlebih dahulu lalu pasang file APK ini.
           files: |
-            release-output/FruitDrop-Auto-v1.0.apk
+            ${{ env.APK_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
