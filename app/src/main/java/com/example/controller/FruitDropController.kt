@@ -6,16 +6,20 @@ import com.example.model.DetectionResult
 import com.example.model.DropTarget
 import com.example.model.FruitDropConfig
 import com.example.model.FruitType
+import com.example.model.QueueStage
+import com.example.model.ScanMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.util.concurrent.atomic.AtomicBoolean
 
 object FruitDropController {
 
     private const val PREFS_NAME = "fruit_drop_prefs"
-    private const val CURRENT_PREFS_VERSION = 3
+    private const val CURRENT_PREFS_VERSION = 4
     private var prefs: SharedPreferences? = null
+    private val manualDropConfirmedFlag = AtomicBoolean(false)
 
     private val _config = MutableStateFlow(FruitDropConfig())
     val config: StateFlow<FruitDropConfig> = _config.asStateFlow()
@@ -54,11 +58,14 @@ object FruitDropController {
         val dropLeftRelX = p.getFloat("dropLeftRelX", 0.095f)
         val dropRightRelX = p.getFloat("dropRightRelX", 0.915f)
         val dropRelY = p.getFloat("dropRelY", 0.406f)
-        val dropDelay = p.getLong("dropDelayMs", 250L)
+        var dropDelay = p.getLong("dropDelayMs", 350L)
         val showMarkers = p.getBoolean("showMarkers", true)
         val showScanBox = p.getBoolean("showScanBox", true)
+        val scanModeName = p.getString("scanMode", ScanMode.NEXT_QUEUE.name)
+        val scanMode = runCatching { ScanMode.valueOf(scanModeName ?: ScanMode.NEXT_QUEUE.name) }
+            .getOrDefault(ScanMode.NEXT_QUEUE)
 
-        // Migrate legacy v1.0.0–v1.0.2 scan defaults so upgrades don't stay stuck on old timer-overlapping circle
+        // Migrate legacy v1.0.0–v1.0.3 scan defaults cleanly
         if (prefsVersion < CURRENT_PREFS_VERSION) {
             if (scanRadius >= 22) {
                 scanRadius = 13
@@ -68,6 +75,9 @@ object FruitDropController {
             }
             if (kotlin.math.abs(scanRelY - 0.281f) < 0.002f) {
                 scanRelY = 0.281f
+            }
+            if (prefsVersion < 4 && dropDelay == 250L) {
+                dropDelay = 350L
             }
         }
 
@@ -80,6 +90,7 @@ object FruitDropController {
                 dropRightRelX = dropRightRelX,
                 dropRelY = dropRelY,
                 dropDelayMs = dropDelay,
+                scanMode = scanMode,
                 showMarkers = showMarkers,
                 showScanBox = showScanBox
             )
@@ -101,22 +112,80 @@ object FruitDropController {
         p.putFloat("dropRightRelX", current.dropRightRelX)
         p.putFloat("dropRelY", current.dropRelY)
         p.putLong("dropDelayMs", current.dropDelayMs)
+        p.putString("scanMode", current.scanMode.name)
         p.putBoolean("showMarkers", current.showMarkers)
         p.putBoolean("showScanBox", current.showScanBox)
         p.apply()
     }
 
     fun setAutoPlay(enabled: Boolean) {
-        _config.update { it.copy(autoPlayEnabled = enabled) }
+        manualDropConfirmedFlag.set(false)
+        _config.update {
+            val nextStage = when {
+                !enabled -> QueueStage.IDLE
+                it.scanMode == ScanMode.NEXT_QUEUE -> QueueStage.WAITING_FIRST_MANUAL
+                else -> QueueStage.AUTO_RUNNING
+            }
+            it.copy(
+                autoPlayEnabled = enabled,
+                queueStage = nextStage,
+                queuedFruit = FruitType.UNKNOWN
+            )
+        }
     }
 
     fun toggleAutoPlay(): Boolean {
         var newState = false
+        manualDropConfirmedFlag.set(false)
         _config.update {
             newState = !it.autoPlayEnabled
-            it.copy(autoPlayEnabled = newState)
+            val nextStage = when {
+                !newState -> QueueStage.IDLE
+                it.scanMode == ScanMode.NEXT_QUEUE -> QueueStage.WAITING_FIRST_MANUAL
+                else -> QueueStage.AUTO_RUNNING
+            }
+            it.copy(
+                autoPlayEnabled = newState,
+                queueStage = nextStage,
+                queuedFruit = FruitType.UNKNOWN
+            )
         }
         return newState
+    }
+
+    fun toggleScanMode(): ScanMode {
+        var updatedMode = ScanMode.NEXT_QUEUE
+        manualDropConfirmedFlag.set(false)
+        _config.update {
+            updatedMode = if (it.scanMode == ScanMode.NEXT_QUEUE) ScanMode.DIRECT else ScanMode.NEXT_QUEUE
+            val nextStage = when {
+                !it.autoPlayEnabled -> QueueStage.IDLE
+                updatedMode == ScanMode.NEXT_QUEUE -> QueueStage.WAITING_FIRST_MANUAL
+                else -> QueueStage.AUTO_RUNNING
+            }
+            it.copy(
+                scanMode = updatedMode,
+                queueStage = nextStage,
+                queuedFruit = FruitType.UNKNOWN
+            )
+        }
+        saveConfig()
+        return updatedMode
+    }
+
+    fun setQueueState(stage: QueueStage, queuedFruit: FruitType) {
+        _config.update {
+            if (it.queueStage == stage && it.queuedFruit == queuedFruit) it
+            else it.copy(queueStage = stage, queuedFruit = queuedFruit)
+        }
+    }
+
+    fun confirmFirstManualDrop() {
+        manualDropConfirmedFlag.set(true)
+    }
+
+    fun consumeManualDropConfirmation(): Boolean {
+        return manualDropConfirmedFlag.getAndSet(false)
     }
 
     fun toggleMarkers() {

@@ -44,6 +44,8 @@ import com.example.controller.FruitDropController
 import com.example.model.DropTarget
 import com.example.model.FruitDropConfig
 import com.example.model.FruitType
+import com.example.model.QueueStage
+import com.example.model.ScanMode
 
 @Composable
 fun FloatingPanelOverlay(
@@ -154,44 +156,93 @@ fun FloatingPanelOverlay(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Current Fruit Detection Status
+            // Current Fruit Detection Status & Queue Indicator
             val detectedFruit = detection.fruit
-            val targetText = when (config.getTargetForFruit(detectedFruit)) {
+            val pct = (detection.confidence * 100).toInt()
+            val isWaitingFirstManual =
+                config.autoPlayEnabled &&
+                    config.scanMode == ScanMode.NEXT_QUEUE &&
+                    config.queueStage == QueueStage.WAITING_FIRST_MANUAL
+
+            val badgeFruit = when {
+                config.autoPlayEnabled && config.scanMode == ScanMode.NEXT_QUEUE && config.queuedFruit != FruitType.UNKNOWN ->
+                    config.queuedFruit
+                else -> detectedFruit
+            }
+            val targetText = when (config.getTargetForFruit(badgeFruit)) {
                 DropTarget.LEFT -> "Kiri"
                 DropTarget.RIGHT -> "Kanan"
                 DropTarget.NONE -> "Siaga"
             }
-            val pct = (detection.confidence * 100).toInt()
-            val statusText = if (detectedFruit != FruitType.UNKNOWN) {
-                "${detectedFruit.displayName} → $targetText ($pct%)"
-            } else if (detection.dominantHue > 0f) {
-                "Memindai... (H:${detection.dominantHue.toInt()}°)"
-            } else {
-                "Memindai Buah..."
+
+            val statusText = when {
+                isWaitingFirstManual && config.queuedFruit != FruitType.UNKNOWN ->
+                    "Drop Buah 1 Manual • Next: ${config.queuedFruit.displayName}"
+                isWaitingFirstManual ->
+                    "Drop Buah 1 Manual (Siapkan...)"
+                config.autoPlayEnabled && config.scanMode == ScanMode.NEXT_QUEUE && config.queuedFruit != FruitType.UNKNOWN ->
+                    "Drop: ${config.queuedFruit.displayName} → $targetText"
+                detectedFruit != FruitType.UNKNOWN ->
+                    "${detectedFruit.displayName} → $targetText ($pct%)"
+                detection.dominantHue > 0f ->
+                    "Memindai... (H:${detection.dominantHue.toInt()}°)"
+                else ->
+                    "Memindai Buah..."
             }
 
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF1E293B))
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .background(if (isWaitingFirstManual) Color(0xFF3E2723) else Color(0xFF1E293B))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(detectedFruit.composeColor)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = statusText,
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(CircleShape)
+                            .background(badgeFruit.composeColor)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = statusText,
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2
+                    )
+                }
+
+                if (config.autoPlayEnabled && config.scanMode == ScanMode.NEXT_QUEUE && config.queueStage == QueueStage.AUTO_RUNNING && detectedFruit != FruitType.UNKNOWN) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Terbaca Next: ${detectedFruit.displayName} ($pct%)",
+                        color = Color(0xFF90CAF9),
+                        fontSize = 10.sp
+                    )
+                }
+
+                if (isWaitingFirstManual) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFFFF9800))
+                            .clickable { FruitDropController.confirmFirstManualDrop() }
+                            .padding(vertical = 5.dp)
+                            .testTag("btn_confirm_manual_drop"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Sudah Drop Buah 1 ▶",
+                            color = Color.Black,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -271,6 +322,33 @@ fun FloatingPanelOverlay(
                     text = if (config.showScanBox) "ON" else "OFF",
                     color = if (config.showScanBox) Color(0xFF40C4FF) else Color.Gray,
                     fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Toggle Scan Mode (Antrean Next Fruit vs Langsung Awan)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (config.scanMode == ScanMode.NEXT_QUEUE) Color(0xFF163C2B) else Color(0xFF1B3A57))
+                    .clickable { FruitDropController.toggleScanMode() }
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .testTag("toggle_scan_mode"),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Mode Scan",
+                    color = Color.White,
+                    fontSize = 11.sp
+                )
+                Text(
+                    text = if (config.scanMode == ScanMode.NEXT_QUEUE) "ANTREAN (NEXT)" else "LANGSUNG",
+                    color = if (config.scanMode == ScanMode.NEXT_QUEUE) Color(0xFF00E676) else Color(0xFF40C4FF),
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )
             }

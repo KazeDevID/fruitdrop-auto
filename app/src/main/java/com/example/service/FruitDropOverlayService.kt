@@ -37,6 +37,8 @@ import com.example.controller.FruitDropController
 import com.example.detector.FruitDetector
 import com.example.model.DropTarget
 import com.example.model.FruitType
+import com.example.model.QueueStage
+import com.example.model.ScanMode
 import com.example.ui.overlay.FloatingPanelOverlay
 import com.example.ui.overlay.GuideMarkersOverlay
 import com.example.ui.overlay.MinimizedBubbleOverlay
@@ -91,6 +93,16 @@ class FruitDropOverlayService : Service() {
     private var isDropping = false
     private var isForegroundStarted = false
     private var lastFrameBitmap: Bitmap? = null
+
+    // Next-Fruit Queue state (waits for manual 1st drop, then shifts queue by 1)
+    private var lockedFirstPreview: FruitType = FruitType.UNKNOWN
+    private var candidateFirstPreview: FruitType = FruitType.UNKNOWN
+    private var stableFirstPreviewCount: Int = 0
+    private var sawBlankAfterFirstLock: Boolean = false
+    private var candidateTransitionFruit: FruitType = FruitType.UNKNOWN
+    private var candidateTransitionCount: Int = 0
+    private var waitingForPreviewUpdateAfterDrop: Boolean = false
+    private var scanSnapshotAtLastDrop: FruitType = FruitType.UNKNOWN
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -452,29 +464,181 @@ class FruitDropOverlayService : Service() {
         }
     }
 
+    private fun resetQueueTracking() {
+        lockedFirstPreview = FruitType.UNKNOWN
+        candidateFirstPreview = FruitType.UNKNOWN
+        stableFirstPreviewCount = 0
+        sawBlankAfterFirstLock = false
+        candidateTransitionFruit = FruitType.UNKNOWN
+        candidateTransitionCount = 0
+        waitingForPreviewUpdateAfterDrop = false
+        scanSnapshotAtLastDrop = FruitType.UNKNOWN
+    }
+
     private fun processBitmapAndDrop(bitmap: Bitmap) {
         val config = FruitDropController.config.value
         val result = FruitDetector.detectFruit(bitmap, config)
         FruitDropController.updateDetection(result)
 
-        if (!config.autoPlayEnabled) return
-        if (result.fruit == FruitType.UNKNOWN) return
-        if (result.confidence < 0.45f) return
-
-        val now = System.currentTimeMillis()
-        val cooldown = config.dropDelayMs
-
-        if (isDropping && now - lastDropAttemptTime > 1200L) {
-            // Safety reset if gesture callback was ever dropped by system
-            isDropping = false
+        if (!config.autoPlayEnabled) {
+            resetQueueTracking()
+            return
         }
 
-        if (now - lastDropTime < cooldown) return
+        val now = System.currentTimeMillis()
+        if (isDropping && now - lastDropAttemptTime > 1200L) {
+            isDropping = false
+        }
         if (isDropping) return
 
         val accessibility = FruitDropAccessibilityService.instance ?: return
 
-        val target = config.getTargetForFruit(result.fruit)
+        if (config.scanMode == ScanMode.DIRECT) {
+            resetQueueTracking()
+            if (result.fruit == FruitType.UNKNOWN || result.confidence < 0.45f) return
+            if (now - lastDropTime < config.dropDelayMs) return
+
+            executeDrop(
+                accessibility = accessibility,
+                fruitToDrop = result.fruit,
+                nextQueuedFruit = FruitType.UNKNOWN,
+                nextStage = QueueStage.AUTO_RUNNING,
+                markPreviewPending = false
+            )
+            return
+        }
+
+        // NEXT_QUEUE mode: SCAN BUAH observes Next Fruit preview; drop 1st fruit manually, bot handles rest
+        when (config.queueStage) {
+            QueueStage.IDLE -> {
+                resetQueueTracking()
+                FruitDropController.setQueueState(QueueStage.WAITING_FIRST_MANUAL, FruitType.UNKNOWN)
+            }
+
+            QueueStage.WAITING_FIRST_MANUAL -> {
+                val manualConfirmed = FruitDropController.consumeManualDropConfirmation()
+
+                if (lockedFirstPreview == FruitType.UNKNOWN) {
+                    if (result.fruit != FruitType.UNKNOWN && result.confidence >= 0.45f) {
+                        if (result.fruit == candidateFirstPreview) {
+                            stableFirstPreviewCount++
+                        } else {
+                            candidateFirstPreview = result.fruit
+                            stableFirstPreviewCount = 1
+                        }
+                        if (stableFirstPreviewCount >= 2 || manualConfirmed) {
+                            lockedFirstPreview = result.fruit
+                            sawBlankAfterFirstLock = false
+                            FruitDropController.setQueueState(QueueStage.WAITING_FIRST_MANUAL, lockedFirstPreview)
+                        }
+                    } else {
+                        candidateFirstPreview = FruitType.UNKNOWN
+                        stableFirstPreviewCount = 0
+                    }
+
+                    if (manualConfirmed && lockedFirstPreview != FruitType.UNKNOWN) {
+                        executeDrop(
+                            accessibility = accessibility,
+                            fruitToDrop = lockedFirstPreview,
+                            nextQueuedFruit = result.fruit,
+                            nextStage = QueueStage.AUTO_RUNNING,
+                            markPreviewPending = true
+                        )
+                    }
+                    return
+                }
+
+                // Manual confirm button pressed by user after dropping 1st fruit
+                if (manualConfirmed) {
+                    val fruitToDrop = lockedFirstPreview
+                    val nextFruit = if (result.fruit != FruitType.UNKNOWN && result.confidence >= 0.45f) {
+                        result.fruit
+                    } else {
+                        FruitType.UNKNOWN
+                    }
+                    executeDrop(
+                        accessibility = accessibility,
+                        fruitToDrop = fruitToDrop,
+                        nextQueuedFruit = nextFruit,
+                        nextStage = QueueStage.AUTO_RUNNING,
+                        markPreviewPending = true
+                    )
+                    return
+                }
+
+                // Auto-detect that user dropped Fruit #1 manually (preview changed or blinked through transition)
+                if (result.fruit == FruitType.UNKNOWN) {
+                    sawBlankAfterFirstLock = true
+                    candidateTransitionFruit = FruitType.UNKNOWN
+                    candidateTransitionCount = 0
+                    return
+                }
+
+                if (result.confidence >= 0.45f && (result.fruit != lockedFirstPreview || sawBlankAfterFirstLock)) {
+                    if (result.fruit == candidateTransitionFruit) {
+                        candidateTransitionCount++
+                    } else {
+                        candidateTransitionFruit = result.fruit
+                        candidateTransitionCount = 1
+                    }
+                    if (candidateTransitionCount >= 2) {
+                        val fruitToDrop = lockedFirstPreview
+                        val nextFruit = result.fruit
+                        executeDrop(
+                            accessibility = accessibility,
+                            fruitToDrop = fruitToDrop,
+                            nextQueuedFruit = nextFruit,
+                            nextStage = QueueStage.AUTO_RUNNING,
+                            markPreviewPending = true
+                        )
+                    }
+                }
+            }
+
+            QueueStage.AUTO_RUNNING -> {
+                val queued = config.queuedFruit
+                if (queued == FruitType.UNKNOWN) {
+                    if (result.fruit != FruitType.UNKNOWN && result.confidence >= 0.45f) {
+                        FruitDropController.setQueueState(QueueStage.AUTO_RUNNING, result.fruit)
+                    }
+                    return
+                }
+
+                val minDelay = maxOf(config.dropDelayMs, 320L)
+                if (now - lastDropTime < minDelay) return
+
+                if (result.fruit == FruitType.UNKNOWN || result.confidence < 0.45f) return
+
+                if (waitingForPreviewUpdateAfterDrop) {
+                    val previewChanged = result.fruit != scanSnapshotAtLastDrop
+                    val settleElapsed = now - lastDropTime >= maxOf(config.dropDelayMs, 420L)
+                    if (!previewChanged && !settleElapsed) {
+                        return
+                    }
+                    waitingForPreviewUpdateAfterDrop = false
+                }
+
+                // Drop the queued fruit (which is now under the cloud) and queue the newly visible Next fruit
+                executeDrop(
+                    accessibility = accessibility,
+                    fruitToDrop = queued,
+                    nextQueuedFruit = result.fruit,
+                    nextStage = QueueStage.AUTO_RUNNING,
+                    markPreviewPending = true
+                )
+            }
+        }
+    }
+
+    private fun executeDrop(
+        accessibility: FruitDropAccessibilityService,
+        fruitToDrop: FruitType,
+        nextQueuedFruit: FruitType,
+        nextStage: QueueStage,
+        markPreviewPending: Boolean
+    ) {
+        val config = FruitDropController.config.value
+        val target = config.getTargetForFruit(fruitToDrop)
         if (target == DropTarget.NONE) return
 
         val targetX = when (target) {
@@ -484,8 +648,14 @@ class FruitDropOverlayService : Service() {
         }
         val targetY = config.dropRelY * screenHeight
 
+        if (markPreviewPending) {
+            scanSnapshotAtLastDrop = nextQueuedFruit
+            waitingForPreviewUpdateAfterDrop = true
+            FruitDropController.setQueueState(nextStage, nextQueuedFruit)
+        }
+
         isDropping = true
-        lastDropAttemptTime = now
+        lastDropAttemptTime = System.currentTimeMillis()
         accessibility.performClick(targetX, targetY) { success ->
             isDropping = false
             if (success) {

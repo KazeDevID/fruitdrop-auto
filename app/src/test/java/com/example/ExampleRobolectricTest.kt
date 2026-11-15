@@ -4,10 +4,13 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.core.app.ApplicationProvider
+import com.example.controller.FruitDropController
 import com.example.detector.FruitDetector
 import com.example.model.DropTarget
 import com.example.model.FruitDropConfig
 import com.example.model.FruitType
+import com.example.model.QueueStage
+import com.example.model.ScanMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
@@ -178,5 +181,36 @@ class ExampleRobolectricTest {
         assertEquals(FruitType.UNKNOWN, result.fruit)
         assertEquals(DropTarget.NONE, result.target)
         assertEquals(true, result.dominantHue in 190f..210f)
+    }
+
+    @Test
+    fun `next queue mode waits for manual first drop before auto running`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        FruitDropController.init(context)
+        FruitDropController.setAutoPlay(false)
+
+        if (FruitDropController.config.value.scanMode != ScanMode.NEXT_QUEUE) {
+            FruitDropController.toggleScanMode()
+        }
+
+        // Enabling AutoPlay in NEXT_QUEUE mode enters WAITING_FIRST_MANUAL
+        FruitDropController.setAutoPlay(true)
+        assertEquals(QueueStage.WAITING_FIRST_MANUAL, FruitDropController.config.value.queueStage)
+        assertEquals(FruitType.UNKNOWN, FruitDropController.config.value.queuedFruit)
+
+        // Manual confirm flag is consumed once
+        FruitDropController.confirmFirstManualDrop()
+        assertEquals(true, FruitDropController.consumeManualDropConfirmation())
+        assertEquals(false, FruitDropController.consumeManualDropConfirmation())
+
+        // Toggling to DIRECT mode enters AUTO_RUNNING immediately when autoPlay is enabled
+        val mode = FruitDropController.toggleScanMode()
+        assertEquals(ScanMode.DIRECT, mode)
+        assertEquals(QueueStage.AUTO_RUNNING, FruitDropController.config.value.queueStage)
+
+        // Reset back to NEXT_QUEUE & OFF cleanly
+        FruitDropController.toggleScanMode()
+        FruitDropController.setAutoPlay(false)
+        assertEquals(QueueStage.IDLE, FruitDropController.config.value.queueStage)
     }
 }

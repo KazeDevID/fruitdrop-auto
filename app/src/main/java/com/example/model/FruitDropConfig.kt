@@ -1,5 +1,16 @@
 package com.example.model
 
+enum class ScanMode {
+    NEXT_QUEUE, // Default: SCAN BUAH reads Next Fruit circle; waits for manual 1st drop, then shifts queue by 1
+    DIRECT      // Direct: SCAN BUAH reads current active fruit under cloud and drops immediately
+}
+
+enum class QueueStage {
+    IDLE,
+    WAITING_FIRST_MANUAL,
+    AUTO_RUNNING
+}
+
 data class FruitDropConfig(
     // Relative coordinates based on real screen dimensions (0.0f - 1.0f)
     val scanRelX: Float = 0.086f,      // ~62px on 720px wide screen (exact preview circle center)
@@ -12,8 +23,11 @@ data class FruitDropConfig(
     val dropRelY: Float = 0.406f,      // Near top of box (~650px on 1600p)
 
     // Performance & auto play
-    val dropDelayMs: Long = 250L,      // Interval between actions in ms
+    val dropDelayMs: Long = 350L,      // Interval between actions in ms (allows Next preview animation to settle)
     val autoPlayEnabled: Boolean = false,
+    val scanMode: ScanMode = ScanMode.NEXT_QUEUE,
+    val queueStage: QueueStage = QueueStage.IDLE,
+    val queuedFruit: FruitType = FruitType.UNKNOWN,
     val showMarkers: Boolean = true,   // "Penanda Titik: ON/OFF"
     val showScanBox: Boolean = true,   // Visual bounding circle for calibration
     val isCalibrating: Boolean = false, // Unlock dragging markers (disables touch pass-through)

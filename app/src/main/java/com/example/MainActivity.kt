@@ -961,8 +961,8 @@ fun GuideTab() {
         "2. Mulai Overlay" to "Tekan 'Mulai Floating Overlay' di halaman Dashboard. Izinkan perekaman layar saat diminta.",
         "3. Buka Yeetalk" to "Buka game Fruit Merge di Yeetalk. Panel 'FruitDrop' akan mengapung di atas game Anda.",
         "4. Cek Penanda Titik" to "Pastikan lingkaran 'KIRI' berada di kolom paling kiri, 'KANAN' di kolom paling kanan, dan 'SCAN BUAH' tepat di atas lingkaran buah selanjutnya.",
-        "5. Nyalakan Auto Aktif" to "Tekan tombol '○ OFF • AUTO MATI' pada panel mengapung agar berubah menjadi hijau '● ON • AUTO AKTIF'.",
-        "6. Nikmati Permainan!" to "Bot akan mendeteksi buah secara real-time dan menjatuhkannya dengan kecepatan tinggi secara presisi."
+        "5. Nyalakan Auto & Drop Buah 1 Manual" to "Tekan '● ON • AUTO AKTIF'. Dalam mode ANTREAN (NEXT), bot akan menunggu Anda menurunkan buah pertama secara manual lalu otomatis meneruskan buah ke-2, ke-3, dan seterusnya sesuai urutan! (Atau tekan 'Sudah Drop Buah 1 ▶' bila dua buah kembar muncul berurutan).",
+        "6. Nikmati Permainan!" to "Bot akan mendeteksi buah selanjutnya dan menjatuhkannya ke kolom Kiri/Kanan secara presisi."
     )
 
     LazyColumn(
