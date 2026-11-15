@@ -31,6 +31,15 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Restore debug keystore
+        run: |
+          if [ -f "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f "debug.keystore" ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          ls -la debug.keystore
+
       - name: Generate Gradle Wrapper if missing
         run: |
           if [ ! -f "gradlew" ]; then
@@ -49,7 +58,7 @@ jobs:
       - name: Prepare APK artifact
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/FruitDrop-Auto-v1.0.apk || true
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/FruitDrop-Auto-v1.0.apk
           ls -la release-output/
 
       - name: Upload APK as Workflow Artifact
@@ -59,12 +68,12 @@ jobs:
           path: release-output/FruitDrop-Auto-v1.0.apk
           retention-days: 30
 
-      - name: Create GitHub Release (On Tag or Main Branch Dispatch)
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+      - name: Create or Update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           name: "FruitDrop Auto v1.0"
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
           draft: false
           prerelease: false
           body: |
