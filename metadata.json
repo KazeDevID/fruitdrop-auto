@@ -1,0 +1,6 @@
+{
+  "name": "FruitDrop",
+  "description": "Auto-drop bot otomatis untuk game Fruit Merge Yeetalk dengan floating overlay dan deteksi buah real-time.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

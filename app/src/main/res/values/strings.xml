@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">FruitDrop</string>
+    <string name="app_tagline">Yeetalk Fruit Merge Auto Bot</string>
+    <string name="overlay_status_on">ON • AUTO AKTIF</string>
+    <string name="overlay_status_off">OFF • AUTO MATI</string>
+    <string name="kiwi_hijau">Kiwi Hijau</string>
+    <string name="buah_persik">Buah Persik (Peach)</string>
+    <string name="blueberry_kecil">Blueberry / Anggur</string>
+    <string name="stroberi_kecil">Stroberi</string>
+    <string name="jeruk_sedang">Jeruk</string>
+    <string name="drop_paling_kiri">Paling Kiri</string>
+    <string name="drop_paling_kanan">Paling Kanan</string>
+    <string name="penanda_titik">Penanda Titik</string>
+    <string name="scan_buah">SCAN BUAH</string>
+    <string name="permission_overlay_title">Izin Floating Window</string>
+    <string name="permission_overlay_desc">Diperlukan untuk menampilkan tombol dan status overlay di atas game Yeetalk.</string>
+    <string name="permission_accessibility_title">Aksesibilitas (Auto Click)</string>
+    <string name="permission_accessibility_desc">Diperlukan untuk melakukan klik otomatis menjatuhkan buah ke kolom kiri atau kanan.</string>
+    <string name="permission_projection_title">Perekaman Layar (Screen Capture)</string>
+    <string name="permission_projection_desc">Diperlukan untuk mendeteksi warna dan jenis buah selanjutnya secara real-time.</string>
+    <string name="grant_permission">Aktifkan Izin</string>
+    <string name="permission_granted">Sudah Aktif ✓</string>
+    <string name="start_service">Mulai Floating Overlay</string>
+    <string name="stop_service">Hentikan Floating Overlay</string>
+    <string name="instructions_title">Panduan Penggunaan</string>
+    <string name="rules_title">Aturan Drop Buah</string>
+    <string name="coordinates_calibration">Kalibrasi Titik Drop &amp; Scan</string>
+</resources>

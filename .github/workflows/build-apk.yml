@@ -1,0 +1,85 @@
+name: Build & Release FruitDrop APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build FruitDrop APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: "gradle"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Generate Gradle Wrapper if missing
+        run: |
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper
+          fi
+          chmod +x gradlew || true
+
+      - name: Build Debug APK
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew :app:assembleDebug --stacktrace
+          else
+            gradle :app:assembleDebug --stacktrace
+          fi
+
+      - name: Prepare APK artifact
+        run: |
+          mkdir -p release-output
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/FruitDrop-Auto-v1.0.apk || true
+          ls -la release-output/
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FruitDrop-Yeetalk-AutoDrop-APK
+          path: release-output/FruitDrop-Auto-v1.0.apk
+          retention-days: 30
+
+      - name: Create GitHub Release (On Tag or Main Branch Dispatch)
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "FruitDrop Auto v1.0"
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          body: |
+            ## 🍓 FruitDrop - Yeetalk Fruit Merge Auto Bot
+            
+            Aplikasi otomatis menjatuhkan buah untuk game Fruit Merge di Yeetalk:
+            - **Kiwi Hijau** & **Buah Persik (Peach)** otomatis drop ke **Paling Kiri**.
+            - **Buah kecil lain** (Blueberry, Stroberi, Jeruk) otomatis drop ke **Paling Kanan**.
+            - **Real-time Fruit Detection** dengan kecepatan tinggi.
+            - **Floating Window & Minimized Bubble** yang praktis di atas game.
+            - **Penanda Titik & Scanner Visual** yang dapat digeser di layar.
+            
+            ### 📥 Unduh APK
+            Unduh file `FruitDrop-Auto-v1.0.apk` di bawah ini dan pasang di perangkat Android Anda.
+          files: |
+            release-output/FruitDrop-Auto-v1.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
