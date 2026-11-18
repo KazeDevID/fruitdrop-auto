@@ -1,4 +1,4 @@
-package com.example.ui.theme
+package com.mkz.ytfm.ui.theme
 
 import android.app.Activity
 import androidx.compose.material3.MaterialTheme

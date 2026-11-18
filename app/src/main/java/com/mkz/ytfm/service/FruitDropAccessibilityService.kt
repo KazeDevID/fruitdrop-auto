@@ -1,4 +1,4 @@
-package com.example.service
+package com.mkz.ytfm.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
@@ -7,7 +7,7 @@ import android.graphics.Path
 import android.os.Build
 import android.util.Log
 import android.view.Display
-import com.example.controller.FruitDropController
+import com.mkz.ytfm.controller.FruitDropController
 
 class FruitDropAccessibilityService : AccessibilityService() {
 

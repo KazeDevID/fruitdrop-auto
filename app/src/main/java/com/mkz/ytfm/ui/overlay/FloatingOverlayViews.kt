@@ -1,4 +1,4 @@
-package com.example.ui.overlay
+package com.mkz.ytfm.ui.overlay
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
@@ -40,12 +40,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.controller.FruitDropController
-import com.example.model.DropTarget
-import com.example.model.FruitDropConfig
-import com.example.model.FruitType
-import com.example.model.QueueStage
-import com.example.model.ScanMode
+import com.mkz.ytfm.controller.FruitDropController
+import com.mkz.ytfm.model.DropTarget
+import com.mkz.ytfm.model.FruitDropConfig
+import com.mkz.ytfm.model.FruitType
+import com.mkz.ytfm.model.QueueStage
+import com.mkz.ytfm.model.ScanMode
 
 @Composable
 fun FloatingPanelOverlay(

@@ -1,4 +1,4 @@
-package com.example.model
+package com.mkz.ytfm.model
 
 enum class ScanMode {
     NEXT_QUEUE, // Default: SCAN BUAH reads Next Fruit circle; waits for manual 1st drop, then shifts queue by 1

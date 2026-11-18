@@ -1,16 +1,16 @@
-package com.example
+package com.mkz.ytfm
 
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.core.app.ApplicationProvider
-import com.example.controller.FruitDropController
-import com.example.detector.FruitDetector
-import com.example.model.DropTarget
-import com.example.model.FruitDropConfig
-import com.example.model.FruitType
-import com.example.model.QueueStage
-import com.example.model.ScanMode
+import com.mkz.ytfm.controller.FruitDropController
+import com.mkz.ytfm.detector.FruitDetector
+import com.mkz.ytfm.model.DropTarget
+import com.mkz.ytfm.model.FruitDropConfig
+import com.mkz.ytfm.model.FruitType
+import com.mkz.ytfm.model.QueueStage
+import com.mkz.ytfm.model.ScanMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test

@@ -1,13 +1,13 @@
-package com.example.controller
+package com.mkz.ytfm.controller
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.example.model.DetectionResult
-import com.example.model.DropTarget
-import com.example.model.FruitDropConfig
-import com.example.model.FruitType
-import com.example.model.QueueStage
-import com.example.model.ScanMode
+import com.mkz.ytfm.model.DetectionResult
+import com.mkz.ytfm.model.DropTarget
+import com.mkz.ytfm.model.FruitDropConfig
+import com.mkz.ytfm.model.FruitType
+import com.mkz.ytfm.model.QueueStage
+import com.mkz.ytfm.model.ScanMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

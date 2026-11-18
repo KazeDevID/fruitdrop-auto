@@ -1,4 +1,4 @@
-package com.example
+package com.mkz.ytfm
 
 import org.junit.Assert.*
 import org.junit.Test

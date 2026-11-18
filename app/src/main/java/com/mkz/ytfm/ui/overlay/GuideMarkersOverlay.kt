@@ -1,4 +1,4 @@
-package com.example.ui.overlay
+package com.mkz.ytfm.ui.overlay
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -34,8 +34,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.controller.FruitDropController
-import com.example.model.FruitType
+import com.mkz.ytfm.controller.FruitDropController
+import com.mkz.ytfm.model.FruitType
 import kotlin.math.roundToInt
 
 @Composable

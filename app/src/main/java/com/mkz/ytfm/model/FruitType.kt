@@ -1,4 +1,4 @@
-package com.example.model
+package com.mkz.ytfm.model
 
 import androidx.compose.ui.graphics.Color
 

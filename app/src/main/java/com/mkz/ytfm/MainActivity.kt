@@ -1,4 +1,4 @@
-package com.example
+package com.mkz.ytfm
 
 import android.Manifest
 import android.app.Activity
@@ -89,21 +89,21 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.controller.FruitDropController
-import com.example.model.DropTarget
-import com.example.model.FruitType
-import com.example.service.FruitDropAccessibilityService
-import com.example.service.FruitDropOverlayService
-import com.example.ui.theme.DarkBackground
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.FruitDropBlue
-import com.example.ui.theme.FruitDropGreen
-import com.example.ui.theme.FruitDropGreenLight
-import com.example.ui.theme.FruitDropOrange
-import com.example.ui.theme.FruitDropPink
-import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.theme.OnSurfaceSecondary
-import com.example.ui.theme.OnSurfaceWhite
+import com.mkz.ytfm.controller.FruitDropController
+import com.mkz.ytfm.model.DropTarget
+import com.mkz.ytfm.model.FruitType
+import com.mkz.ytfm.service.FruitDropAccessibilityService
+import com.mkz.ytfm.service.FruitDropOverlayService
+import com.mkz.ytfm.ui.theme.DarkBackground
+import com.mkz.ytfm.ui.theme.DarkSurface
+import com.mkz.ytfm.ui.theme.FruitDropBlue
+import com.mkz.ytfm.ui.theme.FruitDropGreen
+import com.mkz.ytfm.ui.theme.FruitDropGreenLight
+import com.mkz.ytfm.ui.theme.FruitDropOrange
+import com.mkz.ytfm.ui.theme.FruitDropPink
+import com.mkz.ytfm.ui.theme.MyApplicationTheme
+import com.mkz.ytfm.ui.theme.OnSurfaceSecondary
+import com.mkz.ytfm.ui.theme.OnSurfaceWhite
 
 class MainActivity : ComponentActivity() {
 

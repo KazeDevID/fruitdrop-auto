@@ -1,11 +1,11 @@
-package com.example.detector
+package com.mkz.ytfm.detector
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import com.example.model.DetectionResult
-import com.example.model.DropTarget
-import com.example.model.FruitDropConfig
-import com.example.model.FruitType
+import com.mkz.ytfm.model.DetectionResult
+import com.mkz.ytfm.model.DropTarget
+import com.mkz.ytfm.model.FruitDropConfig
+import com.mkz.ytfm.model.FruitType
 
 object FruitDetector {
 

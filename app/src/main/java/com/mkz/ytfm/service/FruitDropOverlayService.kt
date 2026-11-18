@@ -1,4 +1,4 @@
-package com.example.service
+package com.mkz.ytfm.service
 
 import android.app.Activity
 import android.app.Notification
@@ -31,18 +31,18 @@ import androidx.core.app.ServiceCompat
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import com.example.MainActivity
-import com.example.R
-import com.example.controller.FruitDropController
-import com.example.detector.FruitDetector
-import com.example.model.DropTarget
-import com.example.model.FruitType
-import com.example.model.QueueStage
-import com.example.model.ScanMode
-import com.example.ui.overlay.FloatingPanelOverlay
-import com.example.ui.overlay.GuideMarkersOverlay
-import com.example.ui.overlay.MinimizedBubbleOverlay
-import com.example.ui.theme.MyApplicationTheme
+import com.mkz.ytfm.MainActivity
+import com.mkz.ytfm.R
+import com.mkz.ytfm.controller.FruitDropController
+import com.mkz.ytfm.detector.FruitDetector
+import com.mkz.ytfm.model.DropTarget
+import com.mkz.ytfm.model.FruitType
+import com.mkz.ytfm.model.QueueStage
+import com.mkz.ytfm.model.ScanMode
+import com.mkz.ytfm.ui.overlay.FloatingPanelOverlay
+import com.mkz.ytfm.ui.overlay.GuideMarkersOverlay
+import com.mkz.ytfm.ui.overlay.MinimizedBubbleOverlay
+import com.mkz.ytfm.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
